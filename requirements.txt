@@ -1,0 +1,17 @@
+# Core Dependencies
+python-dotenv>=1.0.0
+requests>=2.31.0
+numpy>=1.24.0,<2.0.0
+pyaudio>=0.2.13,<1.0.0
+
+# OpenAI API
+openai>=1.0.0,<2.0.0
+
+# Google Cloud Services
+google-cloud-speech>=2.21.0,<3.0.0
+
+# ElevenLabs API
+elevenlabs>=0.2.26,<1.0.0
+
+# Unitree SDK (if needed, though it appears to be local)
+# unitree-sdk2py  # Uncomment and specify version if available on PyPI
