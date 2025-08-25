@@ -231,6 +231,7 @@ def transcribe_speech():
             return
             
         # Save to temporary file
+        print("\nSaving audio to temp")
         temp_file = save_audio_to_temp(
             audio_data=audio_data,
             sample_rate=int(dji_device['defaultSampleRate']),
@@ -238,6 +239,7 @@ def transcribe_speech():
         )
         
         # Transcribe the file and yield results
+        print("\nTranscribing audio")
         try:
             for transcript in transcribe_file(client, config, temp_file):
                 yield transcript
