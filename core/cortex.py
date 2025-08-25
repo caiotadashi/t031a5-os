@@ -40,6 +40,10 @@ def process_conversation() -> None:
         # Step 1: Get speech input
         print("\nListening for speech input... (press Ctrl+C to exit)")
         
+        # Release arm before starting to listen
+        print("Releasing arm to default position...")
+        movement_handler.execute_movement("release_arm")
+        
         # Define a callback to handle each speech input
         def handle_speech(user_input: str) -> None:
             if not user_input or should_exit:
@@ -52,7 +56,6 @@ def process_conversation() -> None:
             ai_response = get_ai_response(user_input)
             print(f"AI Response: {ai_response}")
             
-# Then, in the handle_speech function, replace the JSON parsing section with:
             # Parse the JSON response
             try:
                 import json
