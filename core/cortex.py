@@ -59,6 +59,7 @@ def process_conversation() -> None:
             # Parse the JSON response
             try:
                 import json
+                import threading
                 response_data = json.loads(ai_response)
                 chat_response = response_data.get('chat-response', 'No response content found')
                 movement = response_data.get('movement')
@@ -79,15 +80,17 @@ def process_conversation() -> None:
                 model_id="eleven_flash_v2_5"
             )
             
-            try:
-                # Execute movement if specified in the response
-                if movement:
-                    print(f"Executing movement: {movement}")
-                    movement_handler.execute_movement(movement)
-            except json.JSONDecodeError:
-                print("Warning: No movement")
-
-            # Play the audio
+            # Start movement in a separate thread if specified
+            if movement:
+                print(f"Executing movement: {movement}")
+                movement_thread = threading.Thread(
+                    target=movement_handler.execute_movement,
+                    args=(movement,)
+                )
+                movement_thread.daemon = True  # This ensures the thread will exit when the main program exits
+                movement_thread.start()
+            
+            # Play the audio immediately after starting the movement
             client.play_audio(audio_data)
             print("Response played successfully!")
         
