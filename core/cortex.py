@@ -10,9 +10,13 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.nldb import listen_continuously
 from llm.openai_client import get_ai_response
 from speak.elevenlabs_client import get_elevenlabs_client
+from movements.unitree_g1 import UnitreeG1Movement
 
 # Global flag to control the main loop
 should_exit = False
+
+# Initialize the movement handler
+movement_handler = UnitreeG1Movement("eth0")
 
 def signal_handler(sig, frame):
     global should_exit
@@ -48,12 +52,15 @@ def process_conversation() -> None:
             ai_response = get_ai_response(user_input)
             print(f"AI Response: {ai_response}")
             
+# Then, in the handle_speech function, replace the JSON parsing section with:
             # Parse the JSON response
             try:
                 import json
                 response_data = json.loads(ai_response)
                 chat_response = response_data.get('chat-response', 'No response content found')
+                movement = response_data.get('movement')
                 print(f"Extracted chat response: {chat_response}")
+                
             except json.JSONDecodeError:
                 print("Warning: Response is not valid JSON, using full response as is")
                 chat_response = ai_response
@@ -69,6 +76,14 @@ def process_conversation() -> None:
                 model_id="eleven_flash_v2_5"
             )
             
+            try:
+                # Execute movement if specified in the response
+                if movement:
+                    print(f"Executing movement: {movement}")
+                    movement_handler.execute_movement(movement)
+            except json.JSONDecodeError:
+                print("Warning: No movement")
+
             # Play the audio
             client.play_audio(audio_data)
             print("Response played successfully!")
