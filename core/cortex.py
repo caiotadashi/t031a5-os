@@ -11,18 +11,34 @@ from core.nldb import listen_continuously
 from llm.openai_client import get_ai_response
 from speak.elevenlabs_client import get_elevenlabs_client
 
+# Global flag to control the main loop
+should_exit = False
+
+def signal_handler(sig, frame):
+    global should_exit
+    if not should_exit:
+        print("\nStopping the system... (press Ctrl+C again to force exit)")
+        should_exit = True
+    else:
+        print("\nForcefully exiting...")
+        sys.exit(1)
+
 def process_conversation() -> None:
     """
     Handle one iteration of the conversation flow.
     """
+    global should_exit
+    
+    if should_exit:
+        return False
+        
     try:
         # Step 1: Get speech input
         print("\nListening for speech input... (press Ctrl+C to exit)")
         
         # Define a callback to handle each speech input
         def handle_speech(user_input: str) -> None:
-            if not user_input:
-                print("No speech detected or an error occurred during speech recognition.")
+            if not user_input or should_exit:
                 return
                 
             print(f"You said: {user_input}")
@@ -59,29 +75,35 @@ def process_conversation() -> None:
         
         # Start continuous listening with our handler
         listen_continuously(handle_speech)
+        return True
         
     except KeyboardInterrupt:
-        print("\nInterrupted by user.")
-        raise
+        return False
     except Exception as e:
         print(f"An error occurred: {e}")
+        return True
 
 def main() -> None:
     """Main entry point for the cortex module."""
+    import signal
+    
+    # Set up signal handler
+    signal.signal(signal.SIGINT, signal_handler)
+    
     load_dotenv()
     
     print("=== Sistema de Conversação Tobias ===")
     print("Pressione Ctrl+C para encerrar.\n")
     
     try:
-        while True:
-            process_conversation()
-    except KeyboardInterrupt:
-        print("\nEncerrando o sistema...")
+        while not should_exit:
+            if not process_conversation():
+                break
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
     finally:
         print("\nEncerrando o sistema...")
+        sys.exit(0)
 
 if __name__ == "__main__":
     main()

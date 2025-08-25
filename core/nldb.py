@@ -6,12 +6,12 @@ from inputs.googleasr import transcribe_speech
 
 def get_speech_input():
     """
-    Get speech input from the user.
+    Get a single speech input from the user.
     Returns:
         str: The transcribed text or None if no speech was detected.
     """
     try:
-        # Get the first transcription from the generator
+        # Get a single transcription
         for text in transcribe_speech():
             if text:
                 return text
@@ -23,17 +23,26 @@ def get_speech_input():
 def listen_continuously(callback):
     """
     Continuously listen for speech and call the callback with each transcription.
+    
     Args:
         callback: A function that takes a string (the transcribed text) as an argument.
     """
+    import time
+    from inputs.googleasr import set_stop_recording
+    
     try:
+        # Get a single transcription
         for text in transcribe_speech():
             if text:
                 callback(text)
+            # Small delay to prevent busy waiting
+            time.sleep(0.1)
     except KeyboardInterrupt:
-        print("\nStopping continuous listening...")
+        set_stop_recording()
+        raise
     except Exception as e:
-        print(f"Error in continuous listening: {e}")
+        print(f"Error in speech recognition: {e}")
+        time.sleep(1)  # Brief pause before retrying
 
 def main():
     """Main function for testing speech recognition."""

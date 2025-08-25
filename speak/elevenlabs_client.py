@@ -130,6 +130,7 @@ class ElevenLabsClient:
         import tempfile
         import os
         import platform
+        import subprocess
         
         # Create a temporary file
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
@@ -141,8 +142,13 @@ class ElevenLabsClient:
             system = platform.system()
             if system == "Darwin":  # macOS
                 os.system(f'afplay "{temp_filename}"')
-            elif system == "Linux":  # Ubuntu
-                os.system(f'aplay "{temp_filename}"')
+            elif system == "Linux":  # Linux
+                try:
+                    # Try using mpg123 first (better for MP3)
+                    subprocess.run(['mpg123', '-q', temp_filename], check=True)
+                except (subprocess.SubprocessError, FileNotFoundError):
+                    # Fall back to aplay if mpg123 is not available
+                    os.system(f'aplay "{temp_filename}"')
             elif system == "Windows":
                 import winsound
                 winsound.PlaySound(temp_filename, winsound.SND_FILENAME)
@@ -152,8 +158,8 @@ class ElevenLabsClient:
             # Clean up the temporary file
             try:
                 os.unlink(temp_filename)
-            except Exception as e:
-                print(f"Warning: Could not delete temporary audio file: {e}")
+            except:
+                pass
 
 def get_elevenlabs_client() -> ElevenLabsClient:
     """
