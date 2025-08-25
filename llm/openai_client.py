@@ -2,7 +2,7 @@ import os
 from openai import OpenAI
 from dotenv import load_dotenv
 
-def get_ai_response(prompt: str, model: str = "gpt-5-nano") -> str:
+def get_ai_response(prompt: str, model: str = "gpt-4o-mini") -> str:
     """
     Get a response from OpenAI's API based on the given prompt.
     
