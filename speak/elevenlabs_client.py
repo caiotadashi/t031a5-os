@@ -30,7 +30,8 @@ class ElevenLabsClient:
         stability: float = 0.5,
         similarity_boost: float = 0.75,
         style: float = 0.0,
-        speaker_boost: bool = True
+        speaker_boost: bool = True,
+        speed: float = 0.6  # Add speed parameter (0.5 = 50% slower, 1.5 = 50% faster)
     ) -> bytes:
         """
         Convert text to speech using ElevenLabs API.
@@ -43,6 +44,7 @@ class ElevenLabsClient:
             similarity_boost (float): Similarity boost parameter (0.0 to 1.0)
             style (float): Style parameter (0.0 to 1.0)
             speaker_boost (bool): Whether to use speaker boost
+            speed (float): Speaking rate (0.5 to 2.0, where 1.0 is normal speed)
             
         Returns:
             bytes: The audio data in MP3 format
@@ -65,6 +67,9 @@ class ElevenLabsClient:
                 "similarity_boost": similarity_boost,
                 "style": style,
                 "speaker_boost": speaker_boost
+            },
+            "generation_config": {
+                "speed": speed  # Add speed to generation config
             }
         }
         
