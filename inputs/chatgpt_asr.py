@@ -425,15 +425,43 @@ def main():
                 print(f"\nYou said: {transcript}")
                 if response:
                     print("\nResponse:")
-                    # Pretty print JSON response if it looks like JSON
-                    if response.strip().startswith('{') and response.strip().endswith('}'):
+                    # Try to find a JSON object in the response
+                    try:
+                        import json
+                        import re
+                        
+                        # First, try to parse the entire response as JSON
                         try:
-                            import json
                             parsed = json.loads(response)
-                            print(json.dumps(parsed, indent=2, ensure_ascii=False))
-                        except:
+                            if isinstance(parsed, dict):
+                                # If it's a JSON object, print the chat response if it exists
+                                if "chat-response" in parsed:
+                                    print(parsed["chat-response"])
+                                # Print the structured data
+                                print("\nAction Data:")
+                                print(json.dumps(parsed, indent=2, ensure_ascii=False))
+                                continue
+                        except json.JSONDecodeError:
+                            pass  # Not a pure JSON response, try pattern matching
+                        
+                        # If we get here, try to find a JSON object in the response
+                        json_match = re.search(r'\{.*\}', response, re.DOTALL)
+                        if json_match:
+                            # Print the natural language part (everything before the JSON)
+                            print(response[:json_match.start()].strip())
+                            # Parse and pretty print the JSON part
+                            json_str = json_match.group(0)
+                            try:
+                                parsed = json.loads(json_str)
+                                print("\nAction Data:")
+                                print(json.dumps(parsed, indent=2, ensure_ascii=False))
+                            except json.JSONDecodeError as e:
+                                print(f"\nCould not parse JSON: {e}")
+                                print(f"JSON string: {json_str}")
+                        else:
                             print(response)
-                    else:
+                    except Exception as e:
+                        print(f"Error parsing response: {e}")
                         print(response)
     
     except KeyboardInterrupt:
