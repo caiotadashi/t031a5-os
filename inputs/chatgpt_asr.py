@@ -88,6 +88,17 @@ def get_supported_sample_rates(audio_interface, device_index, channels=1):
             
     return supported_rates
 
+def save_audio_to_temp(audio_frames, sample_rate, channels=1):
+    """Save audio data to a temporary WAV file."""
+    with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
+        with wave.open(f.name, 'wb') as wf:
+            wf.setnchannels(channels)
+            wf.setsampwidth(2)  # 16-bit
+            wf.setframerate(sample_rate)
+            # Combine all frames before writing
+            wf.writeframes(b''.join(audio_frames))
+        return f.name
+
 def record_audio(audio_interface, device_index, preferred_rate=16000, channels=1, silence_limit=1.0):
     """Record audio using VAD to detect speech and silence."""
     global should_stop_recording
@@ -98,6 +109,7 @@ def record_audio(audio_interface, device_index, preferred_rate=16000, channels=1
     
     vad = webrtcvad.Vad(3)  # Most aggressive filtering
     frames = []
+    speech_frames = []
     silence_frames = 0
     
     stream = None
@@ -150,53 +162,47 @@ def record_audio(audio_interface, device_index, preferred_rate=16000, channels=1
                 
                 if is_speech:
                     frames.append(frame)
+                    speech_frames.append(frame)
                     silence_frames = 0
-                elif frames:  # Only count silence after speech has started
-                    frames.append(frame)
+                else:
+                    if frames:  # Only add silence if we're in a speech segment
+                        frames.append(frame)
                     silence_frames += 1
-                    if silence_frames > silence_threshold:
-                        break
                 
-            except IOError as e:
-                print(f"\nError reading audio: {e}")
-                break
+                # If we have speech and then enough silence, we're done
+                if speech_frames and silence_frames > silence_threshold:
+                    break
+                    
+            except OSError as e:
+                if e.errno == -9981:  # Input overflowed
+                    continue
+                raise
                 
     except Exception as e:
-        print(f"\nError in recording: {e}")
+        print(f"Error during recording: {e}")
         return None, None
         
     finally:
         if spinner:
             spinner.stop()
         if stream:
-            try:
-                stream.stop_stream()
-                stream.close()
-            except:
-                pass
-        # Set LED back to cyan after recording
-        led_controller.set_preset_color("cyan")
-        print("Changing LED to cyan")
+            stream.stop_stream()
+            stream.close()
     
-    if not frames:
+    if not speech_frames:
+        print("No speech detected. Try again...")
         return None, None
-        
+    
+    # Return the combined audio data and sample rate
     return b''.join(frames), sample_rate
-
-def save_audio_to_temp(audio_data, sample_rate, channels=2):
-    """Save audio data to a temporary WAV file."""
-    with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
-        with wave.open(f.name, 'wb') as wf:
-            wf.setnchannels(channels)
-            wf.setsampwidth(2)  # 16-bit
-            wf.setframerate(sample_rate)
-            wf.writeframes(audio_data)
-        return f.name
-    return None
 
 def transcribe_audio(api_key, audio_file_path):
     """Transcribe the given audio file using OpenAI's Whisper API and get a response with context."""
     try:
+        # Set LED to yellow during processing
+        led_controller.set_preset_color("yellow")
+        print("Changing LED to yellow for processing")
+        
         client = OpenAI(api_key=api_key)
         
         # Get prompts from environment variables
@@ -212,6 +218,7 @@ def transcribe_audio(api_key, audio_file_path):
             )
         
         if not transcript:
+            led_controller.set_preset_color("green")  # Revert to green if no transcript
             return None, None
             
         transcript = transcript.strip()
@@ -236,12 +243,18 @@ def transcribe_audio(api_key, audio_file_path):
             
             # Extract the response text
             response_text = response.choices[0].message.content.strip()
-            return transcript, response_text
             
+            
+            return transcript, response_text
+        
+
         return transcript, None
         
     except Exception as e:
-        print(f"Error in transcription/processing: {e}")
+        print(f"Error in transcription: {e}")
+        # Make sure to set LED back to green even if there's an error
+        led_controller.set_preset_color("green")
+        print("Error occurred, changing LED back to green")
         return None, None
 
 def find_audio_device(audio_interface, device_name=None):
@@ -289,100 +302,74 @@ def transcribe_speech():
         yield None, None
         return
     
-    # Initialize audio interface with suppressed ALSA messages
+    # Initialize audio interface with suppressed ALSA messages for the entire function
     with suppress_alsa_warnings():
         audio_interface = pyaudio.PyAudio()
     
-    try:
-        # Try to find the audio device
-        device_index = find_audio_device(audio_interface, 'DJI MIC')
-        if device_index is None:
-            print("No audio input device found")
-            led_controller.set_preset_color("red")  # Error state
-            audio_interface.terminate()
-            yield None, None
-            return
-        
-        # Get device info and supported rates
-        device_info = audio_interface.get_device_info_by_index(device_index)
-        supported_rates = get_supported_sample_rates(audio_interface, device_index, 1)
-        
-        if not supported_rates:
-            print("Could not determine supported sample rates. Using default...")
-            supported_rates = [int(device_info.get('defaultSampleRate', 48000))]
-        
-        # Use the highest supported sample rate for best quality
-        sample_rate = max(supported_rates)
-        print(f"Using sample rate: {sample_rate}Hz")
-        
-        while True:
-            try:
-                # Record audio with the determined sample rate
-                audio_data, actual_sample_rate = record_audio(
-                    audio_interface, 
-                    device_index,
-                    preferred_rate=sample_rate,
-                    channels=1
-                )
-                
-                if not audio_data:
-                    print("No speech detected. Try again...")
-                    continue
-                
-                # Save to temp file with the actual sample rate used
-                temp_audio_file = save_audio_to_temp(audio_data, actual_sample_rate, 1)
-                if not temp_audio_file:
-                    print("Error saving audio to file")
-                    continue
-                
-                try:
-                    # Set LED to yellow while processing
-                    led_controller.set_preset_color("yellow")
-                    print("Changing LED to yellow")
-                    
-                    # Transcribe using OpenAI's Whisper API
-                    print("\nTranscribing...")
-                    transcript, response = transcribe_audio(api_key, temp_audio_file)
-                    
-                    if transcript:
-                        yield transcript, response
-                    else:
-                        print("No transcription returned. Try again...")
-                        
-                except Exception as e:
-                    print(f"Error during transcription: {e}")
-                    led_controller.set_preset_color("red")  # Error state
-                    print("Changing LED to red")
-                    time.sleep(1)  # Show error state briefly
-                    raise  # Re-raise the exception to be caught by the outer try-except
-                    
-                finally:
-                    # Set LED back to cyan after processing
-                    led_controller.set_preset_color("cyan")
-                    print("Changing LED to cyan")
-                    
-                    # Clean up temp file
-                    try:
-                        os.unlink(temp_audio_file)
-                    except:
-                        pass
-                    
-            except KeyboardInterrupt:
-                print("\nStopping...")
-                break
-            except Exception as e:
-                print(f"Error: {e}")
+        try:
+            # Try to find the audio device
+            device_index = find_audio_device(audio_interface, 'DJI MIC')
+            if device_index is None:
+                print("No audio input device found")
                 led_controller.set_preset_color("red")  # Error state
-                print("Changing LED to red")
-                time.sleep(1)  # Show error state briefly
-                led_controller.set_preset_color("cyan")  # Return to default
-                print("Changing LED to cyan")
-                
-    finally:
-        # Clean up
-        audio_interface.terminate()
-        led_controller.set_preset_color("cyan")  
-        print("Changing LED to cyan")
+                audio_interface.terminate()
+                yield None, None
+                return
+            
+            # Get device info and supported rates
+            device_info = audio_interface.get_device_info_by_index(device_index)
+            supported_rates = get_supported_sample_rates(audio_interface, device_index, 1)
+            
+            if not supported_rates:
+                print("Could not determine supported sample rates. Using default...")
+                supported_rates = [int(device_info.get('defaultSampleRate', 48000))]
+            
+            # Use the highest supported sample rate for best quality
+            sample_rate = max(supported_rates)
+            print(f"Using sample rate: {sample_rate}Hz")
+            
+            while True:
+                try:
+                    # Record audio with the determined sample rate
+                    audio_data, actual_sample_rate = record_audio(
+                        audio_interface,
+                        device_index,
+                        preferred_rate=sample_rate,
+                        channels=1,
+                        silence_limit=1.0
+                    )
+                    
+                    if audio_data is None:
+                        continue
+                        
+                    # Save audio to a temporary file
+                    temp_audio_path = save_audio_to_temp([audio_data], actual_sample_rate, 1)
+                    
+                    try:
+                        # Transcribe the audio
+                        transcript, response = transcribe_audio(api_key, temp_audio_path)
+                        
+                        if transcript:
+                            yield transcript, response
+                            
+                    except Exception as e:
+                        print(f"Error during transcription: {e}")
+                        
+                    finally:
+                        # Clean up the temporary file
+                        try:
+                            os.unlink(temp_audio_path)
+                        except Exception as e:
+                            print(f"Warning: Could not delete temporary file: {e}")
+                    
+                except Exception as e:
+                    print(f"Error during audio processing: {e}")
+                    time.sleep(1)  # Prevent tight loop on errors
+                    
+        finally:
+            audio_interface.terminate()
+            led_controller.set_preset_color("cyan")
+            print("Changing LED to cyan")
 
 def main():
     # Load environment variables first
@@ -393,85 +380,85 @@ def main():
     # Initialize audio interface with suppressed ALSA messages
     with suppress_alsa_warnings():
         audio_interface = pyaudio.PyAudio()
-    
-    try:
-        # Get API key from environment variables
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            print("Error: OPENAI_API_KEY not found in environment variables")
-            print("Please make sure you have a .env file with OPENAI_API_KEY=your_key_here")
-            led_controller.set_preset_color("red")  # Error state
-            return
         
-        # Try to find the audio device
-        device_index = find_audio_device(audio_interface, 'DJI MIC')
-        if device_index is None:
-            print("No audio input device found")
-            led_controller.set_preset_color("red")  # Error state
-            print("Changing LED to red")
-            return
-        
-        # Get device info
-        device_info = audio_interface.get_device_info_by_index(device_index)
-        print(f"Using audio device: {device_info['name']}")
-        
-        # Get supported sample rates
-        supported_rates = get_supported_sample_rates(audio_interface, device_index, 1)
-        print(f"Supported sample rates: {supported_rates}")
-        
-        # Start the main loop
-        for transcript, response in transcribe_speech():
-            if transcript:
-                print(f"\nYou said: {transcript}")
-                if response:
-                    print("\nResponse:")
-                    # Try to find a JSON object in the response
-                    try:
-                        import json
-                        import re
-                        
-                        # First, try to parse the entire response as JSON
+        try:
+            # Get API key from environment variables
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                print("Error: OPENAI_API_KEY not found in environment variables")
+                print("Please make sure you have a .env file with OPENAI_API_KEY=your_key_here")
+                led_controller.set_preset_color("red")  # Error state
+                return
+            
+            # Try to find the audio device
+            device_index = find_audio_device(audio_interface, 'DJI MIC')
+            if device_index is None:
+                print("No audio input device found")
+                led_controller.set_preset_color("red")  # Error state
+                print("Changing LED to red")
+                return
+            
+            # Get device info
+            device_info = audio_interface.get_device_info_by_index(device_index)
+            print(f"Using audio device: {device_info['name']}")
+            
+            # Get supported sample rates
+            supported_rates = get_supported_sample_rates(audio_interface, device_index, 1)
+            print(f"Supported sample rates: {supported_rates}")
+            
+            # Start the main loop
+            for transcript, response in transcribe_speech():
+                if transcript:
+                    print(f"\nYou said: {transcript}")
+                    if response:
+                        print("\nResponse:")
+                        # Try to find a JSON object in the response
                         try:
-                            parsed = json.loads(response)
-                            if isinstance(parsed, dict):
-                                # If it's a JSON object, print the chat response if it exists
-                                if "chat-response" in parsed:
-                                    print(parsed["chat-response"])
-                                # Print the structured data
-                                print("\nAction Data:")
-                                print(json.dumps(parsed, indent=2, ensure_ascii=False))
-                                continue
-                        except json.JSONDecodeError:
-                            pass  # Not a pure JSON response, try pattern matching
-                        
-                        # If we get here, try to find a JSON object in the response
-                        json_match = re.search(r'\{.*\}', response, re.DOTALL)
-                        if json_match:
-                            # Print the natural language part (everything before the JSON)
-                            print(response[:json_match.start()].strip())
-                            # Parse and pretty print the JSON part
-                            json_str = json_match.group(0)
+                            import json
+                            import re
+                            
+                            # First, try to parse the entire response as JSON
                             try:
-                                parsed = json.loads(json_str)
-                                print("\nAction Data:")
-                                print(json.dumps(parsed, indent=2, ensure_ascii=False))
-                            except json.JSONDecodeError as e:
-                                print(f"\nCould not parse JSON: {e}")
-                                print(f"JSON string: {json_str}")
-                        else:
+                                parsed = json.loads(response)
+                                if isinstance(parsed, dict):
+                                    # If it's a JSON object, print the chat response if it exists
+                                    if "chat-response" in parsed:
+                                        print(parsed["chat-response"])
+                                    # Print the structured data
+                                    print("\nAction Data:")
+                                    print(json.dumps(parsed, indent=2, ensure_ascii=False))
+                                    continue
+                            except json.JSONDecodeError:
+                                pass  # Not a pure JSON response, try pattern matching
+                            
+                            # If we get here, try to find a JSON object in the response
+                            json_match = re.search(r'\{.*\}', response, re.DOTALL)
+                            if json_match:
+                                # Print the natural language part (everything before the JSON)
+                                print(response[:json_match.start()].strip())
+                                # Parse and pretty print the JSON part
+                                json_str = json_match.group(0)
+                                try:
+                                    parsed = json.loads(json_str)
+                                    print("\nAction Data:")
+                                    print(json.dumps(parsed, indent=2, ensure_ascii=False))
+                                except json.JSONDecodeError as e:
+                                    print(f"\nCould not parse JSON: {e}")
+                                    print(f"JSON string: {json_str}")
+                            else:
+                                print(response)
+                        except Exception as e:
+                            print(f"Error parsing response: {e}")
                             print(response)
-                    except Exception as e:
-                        print(f"Error parsing response: {e}")
-                        print(response)
     
-    except KeyboardInterrupt:
-        print("\nStopped by user")
-    except Exception as e:
-        print(f"Error: {e}")
-    finally:
-        audio_interface.terminate()
-        led_controller.set_preset_color("cyan") 
-        print("Changing LED to cyan")
+        except KeyboardInterrupt:
+            print("\nStopped by user")
+        except Exception as e:
+            print(f"Error: {e}")
+        finally:
+            audio_interface.terminate()
+            led_controller.set_preset_color("cyan") 
+            print("Changing LED to cyan")
     
     print("Goodbye!")
 
