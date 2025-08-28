@@ -152,12 +152,18 @@ def record_audio(audio_interface, device_index, preferred_rate=16000, channels=1
         spinner.start()
         
         stream.start_stream()
-        while not should_stop_recording:
+        chunk_size = int(sample_rate * 0.01)  # 10ms chunks
+        
+        while not should_stop_recording:  # Check should_stop_recording at the start of the loop
             try:
-                frame = stream.read(int(sample_rate * 0.01), exception_on_overflow=False)
+                # Read a chunk of audio
+                frame = stream.read(chunk_size, exception_on_overflow=False)
+                
+                # Check should_stop_recording after reading
                 if should_stop_recording:
+                    print("Stopping recording as requested...")
                     break
-                    
+                
                 is_speech = vad.is_speech(frame, sample_rate)
                 
                 if is_speech:
@@ -172,6 +178,9 @@ def record_audio(audio_interface, device_index, preferred_rate=16000, channels=1
                 # If we have speech and then enough silence, we're done
                 if speech_frames and silence_frames > silence_threshold:
                     break
+                
+                # Small sleep to prevent CPU spinning
+                time.sleep(0.001)
                     
             except OSError as e:
                 if e.errno == -9981:  # Input overflowed
@@ -189,11 +198,15 @@ def record_audio(audio_interface, device_index, preferred_rate=16000, channels=1
             stream.stop_stream()
             stream.close()
     
+    if should_stop_recording:
+        print("Recording stopped by user request")
+        return None, None
+    
     if not speech_frames:
         print("No speech detected. Try again...")
         return None, None
     
-    # Return the combined audio data and sample rate
+    print(f"Recorded {len(frames)} audio frames")
     return b''.join(frames), sample_rate
 
 def transcribe_audio(api_key, audio_file_path):
@@ -292,6 +305,9 @@ def suppress_alsa_warnings():
 
 def transcribe_speech():
     """Record a single audio utterance and transcribe it using OpenAI's Whisper API."""
+    global should_stop_recording
+    should_stop_recording = False
+    
     load_dotenv()
     
     # Get API key from environment variables
@@ -328,7 +344,7 @@ def transcribe_speech():
             sample_rate = max(supported_rates)
             print(f"Using sample rate: {sample_rate}Hz")
             
-            while True:
+            while not should_stop_recording:  # Check should_stop_recording here
                 try:
                     # Record audio with the determined sample rate
                     audio_data, actual_sample_rate = record_audio(
@@ -339,6 +355,9 @@ def transcribe_speech():
                         silence_limit=1.0
                     )
                     
+                    if should_stop_recording:  # Check again after recording
+                        break
+                        
                     if audio_data is None:
                         continue
                         

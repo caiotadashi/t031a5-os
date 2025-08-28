@@ -54,25 +54,35 @@ def start_interaction():
 
 def stop_interaction():
     """Stop the interaction mode."""
-    global interaction_active, interaction_thread
+    global interaction_active, interaction_thread, should_exit
     
     if not interaction_active:
         return {'status': 'not_running', 'message': 'Interaction is not active'}
     
-    interaction_active = False
+    print("Stopping interaction...")
     
     # Signal the interaction loop to stop
-    global should_exit
+    interaction_active = False
     should_exit = True
     set_stop_recording()
     
-    # Wait for the thread to finish
+    # Wait for the thread to finish with a timeout
     if interaction_thread and interaction_thread.is_alive():
-        interaction_thread.join(timeout=2.0)
+        print("Waiting for interaction thread to stop...")
+        interaction_thread.join(timeout=3.0)
+        
+        # If thread is still alive after timeout, it's likely stuck
+        if interaction_thread.is_alive():
+            print("Warning: Interaction thread did not stop gracefully")
     
-    # Reset the exit flag for future interactions
+    # Reset state
+    interaction_thread = None
     should_exit = False
     
+    # Reset LED to indicate system is idle
+    led_controller.set_preset_color("cyan")
+    
+    print("Interaction stopped successfully")
     return {'status': 'stopped', 'message': 'Interaction stopped successfully'}
 
 def get_interaction_status():
