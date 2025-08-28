@@ -17,6 +17,8 @@ from leds.leds_g1 import UnitreeG1LEDs
 
 # Global flag to control the main loop
 should_exit = False
+interaction_active = False
+interaction_thread = None
 
 # Initialize the movement handler
 movement_handler = UnitreeG1Movement("eth0")
@@ -34,6 +36,75 @@ def signal_handler(sig, frame):
     else:
         print("\nForcefully exiting...")
         sys.exit(1)
+
+def start_interaction():
+    """Start the interaction mode."""
+    global interaction_active, interaction_thread
+    
+    if interaction_active:
+        return {'status': 'already_running', 'message': 'Interaction is already active'}
+    
+    interaction_active = True
+    
+    # Create and start interaction thread
+    interaction_thread = threading.Thread(target=interaction_loop, daemon=True)
+    interaction_thread.start()
+    
+    return {'status': 'started', 'message': 'Interaction started successfully'}
+
+def stop_interaction():
+    """Stop the interaction mode."""
+    global interaction_active, interaction_thread
+    
+    if not interaction_active:
+        return {'status': 'not_running', 'message': 'Interaction is not active'}
+    
+    interaction_active = False
+    
+    # Signal the interaction loop to stop
+    global should_exit
+    should_exit = True
+    set_stop_recording()
+    
+    # Wait for the thread to finish
+    if interaction_thread and interaction_thread.is_alive():
+        interaction_thread.join(timeout=2.0)
+    
+    # Reset the exit flag for future interactions
+    should_exit = False
+    
+    return {'status': 'stopped', 'message': 'Interaction stopped successfully'}
+
+def get_interaction_status():
+    """Get the current interaction status."""
+    return {
+        'is_interacting': interaction_active,
+        'status': 'active' if interaction_active else 'inactive'
+    }
+
+def interaction_loop():
+    """Main interaction loop that processes speech input."""
+    global should_exit
+    
+    print("Interaction loop started")
+    
+    while not should_exit and interaction_active:
+        try:
+            for transcript, _ in transcribe_speech():
+                if transcript and interaction_active:  # Check if still active
+                    process_speech_input(transcript)
+                
+                # Check if we should exit after processing each transcript
+                if should_exit or not interaction_active:
+                    break
+                    
+        except Exception as e:
+            print(f"Error in interaction loop: {e}")
+            # Small delay to prevent tight loop on errors
+            import time
+            time.sleep(1)
+    
+    print("Interaction loop stopped")
 
 def process_speech_input(text: str) -> None:
     """Process a single speech input and generate response with movement if needed."""
@@ -102,39 +173,33 @@ def process_speech_input(text: str) -> None:
 
 def main():
     """Main entry point for the cortex module."""
-    import signal
-    
-    # Set up signal handler for graceful shutdown
-    signal.signal(signal.SIGINT, signal_handler)
+    global should_exit, interaction_active
     
     # Load environment variables
     load_dotenv()
     
+    # Set up signal handler
+    import signal
+    signal.signal(signal.SIGINT, signal_handler)
+    
     print("Cortex system initialized. Press Ctrl+C to exit.")
     
-    try:
-        while not should_exit:
-            # Release arm to default position
-            print("Releasing arm to default position...")
-            movement_handler.execute_movement("release_arm")
+    # Start in non-interactive mode by default
+    # The web interface will control when to start/stop interaction
+    while not should_exit:
+        try:
+            # Just sleep and keep the process alive
+            # The web interface will control the interaction
+            import time
+            time.sleep(1)
             
-            # Listen for speech
-            print("\nListening for speech input... (press Ctrl+C to exit)")
-            
-            # Get transcription from the generator
-            for transcript, _ in transcribe_speech():
-                if transcript and not should_exit:
-                    process_speech_input(transcript)
-                break  # Process only the first transcription
-                
-    except KeyboardInterrupt:
-        print("\nShutting down...")
-    except Exception as e:
-        print(f"Error in main loop: {e}")
-    finally:
-        # Clean up
-        movement_handler.cleanup()
-        print("Cortex system shutdown complete.")
+        except KeyboardInterrupt:
+            signal_handler(signal.SIGINT, None)
+    
+    # Clean up
+    movement_handler.cleanup()
+    led_controller.set_preset_color("off")
+    print("Cortex system shutdown complete.")
 
 if __name__ == "__main__":
     main()

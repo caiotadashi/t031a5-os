@@ -157,12 +157,72 @@
         .movement-btn:active {
             animation: buttonPress 0.2s ease-out;
         }
+        
+        .interact-btn {
+            background: #27ae60;
+            color: white;
+            border: none;
+            border-radius: 20px;
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            margin: 10px 0;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        
+        .interact-btn:hover {
+            background: #219653;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
+        }
+        
+        .interact-btn:active {
+            transform: translateY(1px);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        .interact-btn.stop {
+            background: #e74c3c;
+        }
+        
+        .interact-btn.stop:hover {
+            background: #c0392b;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: #7f8c8d;
+            margin-right: 8px;
+            transition: background-color 0.3s ease;
+        }
+        
+        .status-indicator.active {
+            background-color: #2ecc71;
+            box-shadow: 0 0 10px #2ecc71;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🤖 Tobias G1 Controller</h1>
-        <div id="status" class="status">Pronto</div>
+        <div class="controls">
+            <button id="interactBtn" class="interact-btn">
+                <span class="status-indicator"></span>
+                <span>Start Interaction</span>
+            </button>
+            <div id="status" class="status">Ready to control</div>
+        </div>
         <div class="movement-grid" id="movementGrid">
             <!-- Buttons will be added by JavaScript -->
         </div>
@@ -190,6 +250,10 @@
 
         const movementGrid = document.getElementById('movementGrid');
         const statusElement = document.getElementById('status');
+        const interactBtn = document.getElementById('interactBtn');
+        const statusIndicator = document.querySelector('.status-indicator');
+        let isInteracting = false;
+        let statusCheckInterval;
 
         // Create movement buttons
         movements.forEach(movement => {
@@ -200,8 +264,85 @@
             movementGrid.appendChild(button);
         });
 
+        // Handle interact button click
+        interactBtn.addEventListener('click', toggleInteraction);
+
+        // Check interaction status periodically
+        function checkInteractionStatus() {
+            fetch('/interaction/status')
+                .then(response => response.json())
+                .then(data => {
+                    isInteracting = data.is_interacting;
+                    updateInteractButton();
+                })
+                .catch(error => {
+                    console.error('Error checking interaction status:', error);
+                });
+        }
+
+        // Update interact button state
+        function updateInteractButton() {
+            if (isInteracting) {
+                interactBtn.innerHTML = '<span class="status-indicator active"></span><span>Stop Interaction</span>';
+                interactBtn.classList.add('stop');
+                statusElement.textContent = 'Interaction mode active';
+                statusElement.className = 'status success';
+            } else {
+                interactBtn.innerHTML = '<span class="status-indicator"></span><span>Start Interaction</span>';
+                interactBtn.classList.remove('stop');
+                statusElement.className = 'status';
+            }
+        }
+
+        // Toggle interaction mode
+        function toggleInteraction() {
+            const endpoint = isInteracting ? '/interaction/stop' : '/interaction/start';
+            
+            fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                isInteracting = !isInteracting;
+                updateInteractButton();
+                
+                if (data.status === 'error') {
+                    statusElement.textContent = `❌ ${data.message}`;
+                    statusElement.className = 'status error';
+                } else {
+                    statusElement.textContent = data.message;
+                    statusElement.className = 'status success';
+                }
+            })
+            .catch(error => {
+                console.error('Error toggling interaction:', error);
+                statusElement.textContent = '❌ Failed to toggle interaction';
+                statusElement.className = 'status error';
+            });
+        }
+
+        // Initial status check
+        checkInteractionStatus();
+        // Set up periodic status check
+        statusCheckInterval = setInterval(checkInteractionStatus, 2000);
+
+        // Clean up on page unload
+        window.addEventListener('beforeunload', () => {
+            if (statusCheckInterval) {
+                clearInterval(statusCheckInterval);
+            }
+        });
+
         async function executeMovement(movementId, movementName) {
-            // Update status with loading state
+            if (isInteracting) {
+                statusElement.textContent = '❌ Please stop interaction mode first';
+                statusElement.className = 'status error';
+                return;
+            }
+
             statusElement.textContent = `Executing: ${movementName}...`;
             statusElement.className = 'status info';
             
@@ -223,8 +364,9 @@
                     statusElement.className = 'status error';
                 }
             } catch (error) {
-                statusElement.textContent = `❌ Network error: ${error.message}`;
+                statusElement.textContent = '❌ Network error';
                 statusElement.className = 'status error';
+                console.error('Error executing movement:', error);
             }
             
             // Clear status after 3 seconds
@@ -235,17 +377,6 @@
                 }
             }, 3000);
         }
-        
-        // Add touch feedback for mobile
-        document.querySelectorAll('.movement-btn').forEach(button => {
-            button.addEventListener('touchstart', function() {
-                this.classList.add('active');
-            }, false);
-            
-            button.addEventListener('touchend', function() {
-                this.classList.remove('active');
-            }, false);
-        });
     </script>
 </body>
 </html>

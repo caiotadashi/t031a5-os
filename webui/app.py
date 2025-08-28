@@ -1,11 +1,13 @@
 from flask import Flask, render_template, jsonify, request
 from movements.unitree_g1 import UnitreeG1Movement
+from core.cortex import start_interaction, stop_interaction, get_interaction_status
 import threading
 import os
 
 app = Flask(__name__)
 movement_handler = None
 
+# Initialize movement handler in a separate thread
 def initialize_movement_handler():
     global movement_handler
     try:
@@ -38,6 +40,30 @@ def execute_movement():
         return jsonify({'success': success})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/interaction/start', methods=['POST'])
+def start_interaction_endpoint():
+    try:
+        result = start_interaction()
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/interaction/stop', methods=['POST'])
+def stop_interaction_endpoint():
+    try:
+        result = stop_interaction()
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/interaction/status', methods=['GET'])
+def interaction_status_endpoint():
+    try:
+        status = get_interaction_status()
+        return jsonify(status)
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
