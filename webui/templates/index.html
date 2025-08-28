@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tobias G1 Controller - by Bolha</title>
+    <style>
+        :root {
+            --primary: #3498db;
+            --primary-hover: #2980b9;
+            --primary-active: #1f6aa5;
+            --bg-color: #121212;
+            --surface: #1e1e1e;
+            --surface-hover: #2a2a2a;
+            --text-primary: #ffffff;
+            --text-secondary: #bbbbbb;
+            --success: #2ecc71;
+            --error: #e74c3c;
+            --border-radius: 10px;
+            --transition: all 0.2s ease;
+        }
+        
+        * {
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 100%;
+            padding: 15px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        h1 {
+            text-align: center;
+            color: var(--primary);
+            margin: 15px 0 10px;
+            font-size: 26px;
+            font-weight: 600;
+            text-shadow: 0 0 10px rgba(52, 152, 219, 0.3);
+        }
+        
+        .movement-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 8px;
+            padding: 5px 0;
+            flex: 1;
+        }
+        
+        .movement-btn {
+            background: var(--surface);
+            color: var(--text-primary);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: var(--border-radius);
+            padding: 10px 5px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            text-transform: capitalize;
+            transition: var(--transition);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            position: relative;
+            overflow: hidden;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+        
+        .movement-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, rgba(52, 152, 219, 0.1) 0%, rgba(52, 152, 219, 0) 100%);
+            opacity: 0;
+            transition: var(--transition);
+        }
+        
+        .movement-btn:hover {
+            background: var(--surface-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
+            border-color: rgba(52, 152, 219, 0.3);
+        }
+        
+        .movement-btn:hover::before {
+            opacity: 1;
+        }
+        
+        .movement-btn:active {
+            transform: translateY(1px);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        .status {
+            text-align: center;
+            margin: 10px 0 15px;
+            min-height: 24px;
+            color: var(--text-secondary);
+            font-size: 14px;
+            transition: var(--transition);
+            padding: 8px;
+            border-radius: var(--border-radius);
+            background: rgba(255, 255, 255, 0.03);
+        }
+        
+        .status.success {
+            color: var(--success);
+            background: rgba(46, 204, 113, 0.1);
+        }
+        
+        .status.error {
+            color: var(--error);
+            background: rgba(231, 76, 60, 0.1);
+        }
+        
+        .status.info {
+            color: var(--primary);
+            background: rgba(52, 152, 219, 0.1);
+        }
+        
+        @media (orientation: portrait) {
+            .movement-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+            
+            .movement-btn {
+                padding: 12px 5px;
+                font-size: 12px;
+            }
+        }
+        
+        /* Add a subtle animation for button press */
+        @keyframes buttonPress {
+            0% { transform: scale(1); }
+            50% { transform: scale(0.97); }
+            100% { transform: scale(1); }
+        }
+        
+        .movement-btn:active {
+            animation: buttonPress 0.2s ease-out;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 Tobias G1 Controller</h1>
+        <div id="status" class="status">Pronto</div>
+        <div class="movement-grid" id="movementGrid">
+            <!-- Buttons will be added by JavaScript -->
+        </div>
+    </div>
+
+    <script>
+        const movements = [
+            { id: 'release_arm', name: 'Release Arm' },
+            { id: 'shake_hand', name: 'Shake Hand' },
+            { id: 'high_five', name: 'High Five' },
+            { id: 'hug', name: 'Hug' },
+            { id: 'high_wave', name: 'High Wave' },
+            { id: 'clap', name: 'Clap' },
+            { id: 'face_wave', name: 'Face Wave' },
+            { id: 'left_kiss', name: 'Left Kiss' },
+            { id: 'heart', name: 'Heart' },
+            { id: 'right_heart', name: 'Right Heart' },
+            { id: 'hands_up', name: 'Hands Up' },
+            { id: 'x_ray', name: 'X-Ray' },
+            { id: 'right_hand_up', name: 'Right Hand Up' },
+            { id: 'reject', name: 'Reject' },
+            { id: 'right_kiss', name: 'Right Kiss' },
+            { id: 'two_hand_kiss', name: 'Two Hand Kiss' }
+        ];
+
+        const movementGrid = document.getElementById('movementGrid');
+        const statusElement = document.getElementById('status');
+
+        // Create movement buttons
+        movements.forEach(movement => {
+            const button = document.createElement('button');
+            button.className = 'movement-btn';
+            button.textContent = movement.name;
+            button.onclick = () => executeMovement(movement.id, movement.name);
+            movementGrid.appendChild(button);
+        });
+
+        async function executeMovement(movementId, movementName) {
+            // Update status with loading state
+            statusElement.textContent = `Executing: ${movementName}...`;
+            statusElement.className = 'status info';
+            
+            try {
+                const response = await fetch('/execute', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ movement: movementId })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    statusElement.textContent = `✅ ${movementName} executed!`;
+                    statusElement.className = 'status success';
+                } else {
+                    statusElement.textContent = `❌ Error: ${result.error || 'Unknown error'}`;
+                    statusElement.className = 'status error';
+                }
+            } catch (error) {
+                statusElement.textContent = `❌ Network error: ${error.message}`;
+                statusElement.className = 'status error';
+            }
+            
+            // Clear status after 3 seconds
+            setTimeout(() => {
+                if (statusElement.textContent.includes(movementName)) {
+                    statusElement.textContent = 'Ready to control';
+                    statusElement.className = 'status';
+                }
+            }, 3000);
+        }
+        
+        // Add touch feedback for mobile
+        document.querySelectorAll('.movement-btn').forEach(button => {
+            button.addEventListener('touchstart', function() {
+                this.classList.add('active');
+            }, false);
+            
+            button.addEventListener('touchend', function() {
+                this.classList.remove('active');
+            }, false);
+        });
+    </script>
+</body>
+</html>
